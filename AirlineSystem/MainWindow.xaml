@@ -1,0 +1,229 @@
+﻿<Window x:Class="AirlineSystem.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Авиакомпания - Управление рейсами" 
+        Height="600" Width="900">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Заголовок -->
+        <StackPanel Grid.Row="0" Background="#FF0F4C75" Margin="10,5,10,5">
+            <TextBlock Text="Авиакомпания" 
+                      Foreground="White" 
+                      FontSize="24" 
+                      FontWeight="Bold"
+                      Margin="10,5,10,0"/>
+            <TextBlock Text="Управление рейсами и бронированиями" 
+                      Foreground="White" 
+                      FontSize="14"
+                      Margin="10,0,10,10"/>
+        </StackPanel>
+
+        <!-- Основной контент -->
+        <TabControl Grid.Row="1" Margin="10">
+            <!-- Вкладка Рейсы -->
+            <TabItem Header="Рейсы">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Панель поиска -->
+                    <GroupBox Grid.Row="0" Header="Поиск и фильтрация" Margin="5">
+                        <StackPanel Orientation="Horizontal" Margin="5">
+                            <TextBox x:Name="txtSearchFlight" 
+                                    Width="200" 
+                                    Margin="5,0" 
+                                    TextChanged="TxtSearchFlight_TextChanged"/>
+                            <ComboBox x:Name="cmbStatusFilter" 
+                                     Width="150" 
+                                     Margin="5,0"
+                                     SelectionChanged="CmbStatusFilter_SelectionChanged">
+                                <ComboBoxItem>Все статусы</ComboBoxItem>
+                                <ComboBoxItem>Scheduled</ComboBoxItem>
+                                <ComboBoxItem>Completed</ComboBoxItem>
+                                <ComboBoxItem>Cancelled</ComboBoxItem>
+                            </ComboBox>
+                            <DatePicker x:Name="dpDateFilter" 
+                                       Width="150" 
+                                       Margin="5,0"/>
+                            <Button Content="Сбросить фильтры" 
+                                   Margin="5,0" 
+                                   Padding="10,5"
+                                   Click="BtnResetFilters_Click"/>
+                        </StackPanel>
+                    </GroupBox>
+
+                    <!-- Список рейсов -->
+                    <DataGrid x:Name="dgFlights" 
+                             Grid.Row="1" 
+                             Margin="5" 
+                             AutoGenerateColumns="False"
+                             SelectionChanged="DgFlights_SelectionChanged"
+                             CanUserAddRows="False">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Номер рейса" 
+                                              Binding="{Binding FlightNumber}" 
+                                              Width="100"/>
+                            <DataGridTextColumn Header="Маршрут" 
+                                              Binding="{Binding RouteInfo}" 
+                                              Width="200"/>
+                            <DataGridTextColumn Header="Вылет" 
+                                              Binding="{Binding DepartureTime, StringFormat=dd.MM.yyyy HH:mm}" 
+                                              Width="150"/>
+                            <DataGridTextColumn Header="Прилет" 
+                                              Binding="{Binding ArrivalTime, StringFormat=dd.MM.yyyy HH:mm}" 
+                                              Width="150"/>
+                            <DataGridTextColumn Header="Статус" 
+                                              Binding="{Binding Status}" 
+                                              Width="100"/>
+                            <DataGridTextColumn Header="Цена" 
+                                              Binding="{Binding Price, StringFormat=N2}" 
+                                              Width="100"/>
+                            <DataGridTextColumn Header="Свободные места" 
+                                              Binding="{Binding AvailableSeats}" 
+                                              Width="120"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </TabItem>
+
+            <!-- Вкладка Редактирование -->
+            <TabItem Header="Редактирование рейса">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Форма редактирования -->
+                    <GroupBox Grid.Row="0" Header="Информация о рейсе" Margin="0,0,0,10">
+                        <Grid Margin="5">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <Label Grid.Row="0" Grid.Column="0" 
+                                   Content="Номер рейса:"
+                                   Margin="5"/>
+                            <TextBox Grid.Row="0" Grid.Column="1" 
+                                    x:Name="txtFlightNumber" 
+                                    Margin="5" 
+                                    Text="{Binding SelectedFlight.FlightNumber, UpdateSourceTrigger=PropertyChanged}"/>
+
+                            <Label Grid.Row="0" Grid.Column="2" 
+                                   Content="Статус:"
+                                   Margin="5"/>
+                            <ComboBox Grid.Row="0" Grid.Column="3" 
+                                     x:Name="cmbStatus" 
+                                     Margin="5"
+                                     SelectedValue="{Binding SelectedFlight.Status}">
+                                <ComboBoxItem>Scheduled</ComboBoxItem>
+                                <ComboBoxItem>Completed</ComboBoxItem>
+                                <ComboBoxItem>Cancelled</ComboBoxItem>
+                                <ComboBoxItem>Delayed</ComboBoxItem>
+                            </ComboBox>
+
+                            <Label Grid.Row="1" Grid.Column="0" 
+                                   Content="Дата вылета:"
+                                   Margin="5"/>
+                            <DatePicker Grid.Row="1" Grid.Column="1" 
+                                       x:Name="dpDepartureDate" 
+                                       Margin="5"
+                                       SelectedDate="{Binding SelectedFlight.DepartureTime}"/>
+
+                            <Label Grid.Row="1" Grid.Column="2" 
+                                   Content="Время вылета:"
+                                   Margin="5"/>
+                            <TextBox Grid.Row="1" Grid.Column="3" 
+                                    x:Name="txtDepartureTime" 
+                                    Margin="5" 
+                                    Text="08:00"/>
+
+                            <Label Grid.Row="2" Grid.Column="0" 
+                                   Content="Цена:"
+                                   Margin="5"/>
+                            <TextBox Grid.Row="2" Grid.Column="1" 
+                                    x:Name="txtPrice" 
+                                    Margin="5" 
+                                    Text="{Binding SelectedFlight.Price, UpdateSourceTrigger=PropertyChanged}"/>
+
+                            <Label Grid.Row="2" Grid.Column="2" 
+                                   Content="Свободные места:"
+                                   Margin="5"/>
+                            <TextBox Grid.Row="2" Grid.Column="3" 
+                                    x:Name="txtAvailableSeats" 
+                                    Margin="5" 
+                                    Text="{Binding SelectedFlight.AvailableSeats, UpdateSourceTrigger=PropertyChanged}"/>
+
+                            <CheckBox Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2"
+                                     x:Name="chkTouristSeason" 
+                                     Content="Туристический сезон" 
+                                     Margin="5"
+                                     IsChecked="{Binding SelectedFlight.IsTouristSeason}"/>
+                        </Grid>
+                    </GroupBox>
+
+                    <!-- Кнопки действий -->
+                    <StackPanel Grid.Row="2" 
+                                Orientation="Horizontal" 
+                                HorizontalAlignment="Center" 
+                                Margin="0,10,0,0">
+                        <Button x:Name="btnAdd" 
+                               Content="Добавить" 
+                               Width="100" 
+                               Margin="5" 
+                               Padding="10,5"
+                               Click="BtnAdd_Click"/>
+                        <Button x:Name="btnEdit" 
+                               Content="Сохранить" 
+                               Width="100" 
+                               Margin="5" 
+                               Padding="10,5"
+                               Click="BtnEdit_Click"/>
+                        <Button x:Name="btnDelete" 
+                               Content="Удалить" 
+                               Width="100" 
+                               Margin="5" 
+                               Padding="10,5"
+                               Click="BtnDelete_Click"
+                               Background="#FFDC3545" 
+                               Foreground="White"/>
+                        <Button x:Name="btnClear" 
+                               Content="Очистить" 
+                               Width="100" 
+                               Margin="5" 
+                               Padding="10,5"
+                               Click="BtnClear_Click"/>
+                    </StackPanel>
+                </Grid>
+            </TabItem>
+        </TabControl>
+
+        <!-- Статус бар -->
+        <StatusBar Grid.Row="2">
+            <StatusBarItem>
+                <TextBlock x:Name="tbStatus" Text="Готово"/>
+            </StatusBarItem>
+            <StatusBarItem>
+                <TextBlock x:Name="tbRecordCount" Text="Записей: 0"/>
+            </StatusBarItem>
+        </StatusBar>
+    </Grid>
+</Window>
