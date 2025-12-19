@@ -1,3 +1,4 @@
 <Solution>
+  <Project Path="AirlineSystem.Tests/AirlineSystem.Tests.csproj" />
   <Project Path="AirlineSystem/AirlineSystem.csproj" />
 </Solution>

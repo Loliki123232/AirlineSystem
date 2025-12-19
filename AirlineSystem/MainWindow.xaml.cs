@@ -1,176 +1,136 @@
-﻿using System;
+﻿using AirlineSystem.Models;
+using AirlineSystem.Services;
+using System;
 using System.Collections.Generic;
-using System.Data;
-using System.Data.SqlClient;
-using System.Linq;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
 
 namespace AirlineSystem
 {
-    public partial class MainWindow : Window
+    public partial class MainWindow : Window, INotifyPropertyChanged
     {
-        private string connectionString = @"Data Source=(localdb)\MSSQLLocalDB;Initial Catalog=AirlineDB;Integrated Security=True";
-        private List<Flight> flights = new List<Flight>();
-        private Flight selectedFlight = new Flight();
+        private readonly FlightService _flightService;
+        private readonly RevenueCalculator _revenueCalculator;
+        private List<Flight> _allFlights = new List<Flight>();
+        private Flight? _selectedFlight;
+
+        public Flight? SelectedFlight
+        {
+            get => _selectedFlight;
+            set
+            {
+                _selectedFlight = value;
+                OnPropertyChanged();
+            }
+        }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
 
         public MainWindow()
         {
             InitializeComponent();
-            LoadFlights();
+            
+            string connectionString = @"Data Source=(localdb)\MSSQLLocalDB;Initial Catalog=AirlineDB;Integrated Security=True";
+            _flightService = new FlightService(connectionString);
+            _revenueCalculator = new RevenueCalculator(connectionString);
+            
             DataContext = this;
+            LoadFlights();
         }
 
-        public Flight SelectedFlight
+        protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
         {
-            get { return selectedFlight; }
-            set { selectedFlight = value; }
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
 
         private void LoadFlights()
         {
-            flights.Clear();
-
-            using (SqlConnection connection = new SqlConnection(connectionString))
+            try
             {
-                string query = @"
-            SELECT 
-                f.FlightID,
-                f.FlightNumber,
-                r.DeparturePoint,
-                r.DestinationPoint,
-                f.DepartureTime,
-                f.ArrivalTime,
-                f.Status,
-                f.Price,
-                f.AvailableSeats,
-                f.IsTouristSeason
-            FROM Flights f
-            INNER JOIN Routes r ON f.RouteID = r.RouteID
-            ORDER BY f.DepartureTime";
-
-                SqlCommand command = new SqlCommand(query, connection);
-                SqlDataAdapter adapter = new SqlDataAdapter(command);
-                DataTable dt = new DataTable();
-
-                connection.Open();
-                adapter.Fill(dt);
-
-                foreach (DataRow row in dt.Rows)
-                {
-                    flights.Add(new Flight
-                    {
-                        FlightID = Convert.ToInt32(row["FlightID"]),
-                        FlightNumber = row["FlightNumber"].ToString(),
-                        DeparturePoint = row["DeparturePoint"].ToString(),
-                        DestinationPoint = row["DestinationPoint"].ToString(),
-                        DepartureTime = Convert.ToDateTime(row["DepartureTime"]),
-                        ArrivalTime = Convert.ToDateTime(row["ArrivalTime"]),
-                        Status = row["Status"].ToString(),
-                        Price = Convert.ToDecimal(row["Price"]),
-                        AvailableSeats = Convert.ToInt32(row["AvailableSeats"]),
-                        IsTouristSeason = Convert.ToBoolean(row["IsTouristSeason"])
-                    });
-                }
+                _allFlights = _flightService.GetAllFlights();
+                dgFlights.ItemsSource = _allFlights;
+                tbRecordCount.Text = $"Записей: {_allFlights.Count}";
             }
-
-            dgFlights.ItemsSource = flights;
-            tbRecordCount.Text = $"Записей: {flights.Count}";
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Ошибка загрузки рейсов: {ex.Message}", "Ошибка", 
+                              MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
+
         private void BtnAdd_Click(object sender, RoutedEventArgs e)
         {
             try
             {
-                using (SqlConnection connection = new SqlConnection(connectionString))
+                if (!ValidateFlightForm())
+                    return;
+
+                var newFlight = CreateFlightFromForm();
+                
+                if (_flightService.AddFlight(newFlight))
                 {
-                    string query = @"
-                        INSERT INTO Flights (FlightNumber, RouteID, AircraftID, DepartureTime, ArrivalTime, Status, Price, AvailableSeats, IsTouristSeason)
-                        VALUES (@FlightNumber, 1, 1, @DepartureTime, @ArrivalTime, @Status, @Price, @AvailableSeats, @IsTouristSeason)";
-
-                    SqlCommand command = new SqlCommand(query, connection);
-
-                    // Собираем дату и время
-                    DateTime departureDate = dpDepartureDate.SelectedDate ?? DateTime.Now;
-                    TimeSpan departureTime = TimeSpan.Parse(txtDepartureTime.Text);
-                    DateTime departureDateTime = departureDate.Add(departureTime);
-
-                    command.Parameters.AddWithValue("@FlightNumber", txtFlightNumber.Text);
-                    command.Parameters.AddWithValue("@DepartureTime", departureDateTime);
-                    command.Parameters.AddWithValue("@ArrivalTime", departureDateTime.AddHours(2));
-                    command.Parameters.AddWithValue("@Status", ((ComboBoxItem)cmbStatus.SelectedItem).Content.ToString());
-                    command.Parameters.AddWithValue("@Price", decimal.Parse(txtPrice.Text));
-                    command.Parameters.AddWithValue("@AvailableSeats", int.Parse(txtAvailableSeats.Text));
-                    command.Parameters.AddWithValue("@IsTouristSeason", chkTouristSeason.IsChecked ?? false);
-
-                    connection.Open();
-                    command.ExecuteNonQuery();
-
-                    MessageBox.Show("Рейс успешно добавлен!", "Успех", MessageBoxButton.OK, MessageBoxImage.Information);
+                    MessageBox.Show("Рейс успешно добавлен!", "Успех", 
+                                  MessageBoxButton.OK, MessageBoxImage.Information);
                     LoadFlights();
                     ClearForm();
+                }
+                else
+                {
+                    MessageBox.Show("Не удалось добавить рейс", "Ошибка", 
+                                  MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Ошибка при добавлении: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"Ошибка при добавлении: {ex.Message}", "Ошибка", 
+                              MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
         private void BtnEdit_Click(object sender, RoutedEventArgs e)
         {
-            if (selectedFlight == null || selectedFlight.FlightID == 0)
+            if (SelectedFlight == null || SelectedFlight.FlightID == 0)
             {
-                MessageBox.Show("Выберите рейс для редактирования", "Внимание", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show("Выберите рейс для редактирования", "Внимание", 
+                              MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
             try
             {
-                using (SqlConnection connection = new SqlConnection(connectionString))
+                UpdateFlightFromForm(SelectedFlight);
+                
+                if (_flightService.UpdateFlight(SelectedFlight))
                 {
-                    string query = @"
-                        UPDATE Flights 
-                        SET FlightNumber = @FlightNumber,
-                            Status = @Status,
-                            Price = @Price,
-                            AvailableSeats = @AvailableSeats,
-                            IsTouristSeason = @IsTouristSeason
-                        WHERE FlightID = @FlightID";
-
-                    SqlCommand command = new SqlCommand(query, connection);
-
-                    command.Parameters.AddWithValue("@FlightID", selectedFlight.FlightID);
-                    command.Parameters.AddWithValue("@FlightNumber", txtFlightNumber.Text);
-                    command.Parameters.AddWithValue("@Status", ((ComboBoxItem)cmbStatus.SelectedItem).Content.ToString());
-                    command.Parameters.AddWithValue("@Price", decimal.Parse(txtPrice.Text));
-                    command.Parameters.AddWithValue("@AvailableSeats", int.Parse(txtAvailableSeats.Text));
-                    command.Parameters.AddWithValue("@IsTouristSeason", chkTouristSeason.IsChecked ?? false);
-
-                    connection.Open();
-                    int rowsAffected = command.ExecuteNonQuery();
-
-                    if (rowsAffected > 0)
-                    {
-                        MessageBox.Show("Рейс успешно обновлен!", "Успех", MessageBoxButton.OK, MessageBoxImage.Information);
-                        LoadFlights();
-                    }
+                    MessageBox.Show("Рейс успешно обновлен!", "Успех", 
+                                  MessageBoxButton.OK, MessageBoxImage.Information);
+                    LoadFlights();
+                }
+                else
+                {
+                    MessageBox.Show("Не удалось обновить рейс", "Ошибка", 
+                                  MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Ошибка при обновлении: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"Ошибка при обновлении: {ex.Message}", "Ошибка", 
+                              MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
         private void BtnDelete_Click(object sender, RoutedEventArgs e)
         {
-            if (selectedFlight == null || selectedFlight.FlightID == 0)
+            if (SelectedFlight == null || SelectedFlight.FlightID == 0)
             {
-                MessageBox.Show("Выберите рейс для удаления", "Внимание", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show("Выберите рейс для удаления", "Внимание", 
+                              MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
-            var result = MessageBox.Show($"Вы уверены, что хотите удалить рейс {selectedFlight.FlightNumber}?",
+            var result = MessageBox.Show($"Вы уверены, что хотите удалить рейс {SelectedFlight.FlightNumber}?",
                                         "Подтверждение удаления",
                                         MessageBoxButton.YesNo,
                                         MessageBoxImage.Question);
@@ -179,43 +139,23 @@ namespace AirlineSystem
             {
                 try
                 {
-                    using (SqlConnection connection = new SqlConnection(connectionString))
+                    if (_flightService.DeleteFlight(SelectedFlight.FlightID))
                     {
-                        // Проверяем, есть ли связанные бронирования
-                        string checkQuery = "SELECT COUNT(*) FROM Bookings WHERE FlightID = @FlightID";
-                        SqlCommand checkCommand = new SqlCommand(checkQuery, connection);
-                        checkCommand.Parameters.AddWithValue("@FlightID", selectedFlight.FlightID);
-
-                        connection.Open();
-                        int bookingsCount = (int)checkCommand.ExecuteScalar();
-
-                        if (bookingsCount > 0)
-                        {
-                            MessageBox.Show("Невозможно удалить рейс, так как есть связанные бронирования. Отмените статус рейса вместо удаления.",
-                                          "Ошибка",
-                                          MessageBoxButton.OK,
-                                          MessageBoxImage.Error);
-                            return;
-                        }
-
-                        // Удаляем рейс
-                        string deleteQuery = "DELETE FROM Flights WHERE FlightID = @FlightID";
-                        SqlCommand deleteCommand = new SqlCommand(deleteQuery, connection);
-                        deleteCommand.Parameters.AddWithValue("@FlightID", selectedFlight.FlightID);
-
-                        int rowsAffected = deleteCommand.ExecuteNonQuery();
-
-                        if (rowsAffected > 0)
-                        {
-                            MessageBox.Show("Рейс успешно удален!", "Успех", MessageBoxButton.OK, MessageBoxImage.Information);
-                            LoadFlights();
-                            ClearForm();
-                        }
+                        MessageBox.Show("Рейс успешно удален!", "Успех", 
+                                      MessageBoxButton.OK, MessageBoxImage.Information);
+                        LoadFlights();
+                        ClearForm();
+                    }
+                    else
+                    {
+                        MessageBox.Show("Не удалось удалить рейс", "Ошибка", 
+                                      MessageBoxButton.OK, MessageBoxImage.Error);
                     }
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Ошибка при удалении: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBox.Show($"Ошибка при удалении: {ex.Message}", "Ошибка", 
+                                  MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
         }
@@ -225,39 +165,12 @@ namespace AirlineSystem
             ClearForm();
         }
 
-        private void ClearForm()
-        {
-            selectedFlight = new Flight();
-            txtFlightNumber.Text = "";
-            cmbStatus.SelectedIndex = 0;
-            txtPrice.Text = "";
-            txtAvailableSeats.Text = "";
-            chkTouristSeason.IsChecked = false;
-            dpDepartureDate.SelectedDate = DateTime.Now;
-            txtDepartureTime.Text = "08:00";
-        }
-
         private void DgFlights_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (dgFlights.SelectedItem != null)
+            if (dgFlights.SelectedItem is Flight flight)
             {
-                selectedFlight = (Flight)dgFlights.SelectedItem;
-
-                // Обновляем форму
-                txtFlightNumber.Text = selectedFlight.FlightNumber;
-                txtPrice.Text = selectedFlight.Price.ToString();
-                txtAvailableSeats.Text = selectedFlight.AvailableSeats.ToString();
-                chkTouristSeason.IsChecked = selectedFlight.IsTouristSeason;
-
-                // Устанавливаем статус в комбобоксе
-                foreach (ComboBoxItem item in cmbStatus.Items)
-                {
-                    if (item.Content.ToString() == selectedFlight.Status)
-                    {
-                        cmbStatus.SelectedItem = item;
-                        break;
-                    }
-                }
+                SelectedFlight = flight;
+                UpdateFormFromFlight(flight);
             }
         }
 
@@ -279,52 +192,105 @@ namespace AirlineSystem
             LoadFlights();
         }
 
+        // Вспомогательные методы
+        private bool ValidateFlightForm()
+        {
+            if (string.IsNullOrWhiteSpace(txtFlightNumber.Text))
+            {
+                MessageBox.Show("Введите номер рейса", "Ошибка", 
+                              MessageBoxButton.OK, MessageBoxImage.Warning);
+                return false;
+            }
+
+            if (!decimal.TryParse(txtPrice.Text, out decimal price) || price <= 0)
+            {
+                MessageBox.Show("Введите корректную цену", "Ошибка", 
+                              MessageBoxButton.OK, MessageBoxImage.Warning);
+                return false;
+            }
+
+            if (!int.TryParse(txtAvailableSeats.Text, out int seats) || seats < 0)
+            {
+                MessageBox.Show("Введите корректное количество мест", "Ошибка", 
+                              MessageBoxButton.OK, MessageBoxImage.Warning);
+                return false;
+            }
+
+            return true;
+        }
+
+        private Flight CreateFlightFromForm()
+        {
+            DateTime departureDate = dpDepartureDate.SelectedDate ?? DateTime.Now;
+            TimeSpan departureTime = TimeSpan.TryParse(txtDepartureTime.Text, out var time) ? time : TimeSpan.FromHours(8);
+            DateTime departureDateTime = departureDate.Add(departureTime);
+
+            return new Flight
+            {
+                FlightNumber = txtFlightNumber.Text,
+                Status = ((ComboBoxItem)cmbStatus.SelectedItem)?.Content?.ToString() ?? "Scheduled",
+                Price = decimal.Parse(txtPrice.Text),
+                AvailableSeats = int.Parse(txtAvailableSeats.Text),
+                IsTouristSeason = chkTouristSeason.IsChecked ?? false,
+                DepartureTime = departureDateTime,
+                ArrivalTime = departureDateTime.AddHours(2),
+                RouteID = 1, // По умолчанию
+                AircraftID = 1 // По умолчанию
+            };
+        }
+
+        private void UpdateFormFromFlight(Flight flight)
+        {
+            txtFlightNumber.Text = flight.FlightNumber;
+            txtPrice.Text = flight.Price.ToString();
+            txtAvailableSeats.Text = flight.AvailableSeats.ToString();
+            chkTouristSeason.IsChecked = flight.IsTouristSeason;
+            dpDepartureDate.SelectedDate = flight.DepartureTime;
+            txtDepartureTime.Text = flight.DepartureTime.ToString("HH:mm");
+
+            foreach (ComboBoxItem item in cmbStatus.Items)
+            {
+                if (item.Content?.ToString() == flight.Status)
+                {
+                    cmbStatus.SelectedItem = item;
+                    break;
+                }
+            }
+        }
+
+        private void UpdateFlightFromForm(Flight flight)
+        {
+            flight.FlightNumber = txtFlightNumber.Text;
+            flight.Price = decimal.Parse(txtPrice.Text);
+            flight.AvailableSeats = int.Parse(txtAvailableSeats.Text);
+            flight.IsTouristSeason = chkTouristSeason.IsChecked ?? false;
+            flight.Status = ((ComboBoxItem)cmbStatus.SelectedItem)?.Content?.ToString() ?? "Scheduled";
+        }
+
         private void FilterFlights()
         {
-            var filtered = flights.AsEnumerable();
+            string statusFilter = ((ComboBoxItem)cmbStatusFilter.SelectedItem)?.Content?.ToString() ?? "";
+            
+            var filtered = _flightService.SearchFlights(
+                txtSearchFlight.Text,
+                statusFilter,
+                dpDateFilter.SelectedDate
+            );
 
-            // Фильтр по тексту поиска
-            if (!string.IsNullOrWhiteSpace(txtSearchFlight.Text))
-            {
-                string searchText = txtSearchFlight.Text.ToLower();
-                filtered = filtered.Where(f =>
-                    f.FlightNumber.ToLower().Contains(searchText) ||
-                    f.DeparturePoint.ToLower().Contains(searchText) ||
-                    f.DestinationPoint.ToLower().Contains(searchText));
-            }
-
-            // Фильтр по статусу
-            if (cmbStatusFilter.SelectedIndex > 0)
-            {
-                string selectedStatus = ((ComboBoxItem)cmbStatusFilter.SelectedItem).Content.ToString();
-                filtered = filtered.Where(f => f.Status == selectedStatus);
-            }
-
-            // Фильтр по дате
-            if (dpDateFilter.SelectedDate.HasValue)
-            {
-                DateTime selectedDate = dpDateFilter.SelectedDate.Value.Date;
-                filtered = filtered.Where(f => f.DepartureTime.Date == selectedDate);
-            }
-
-            dgFlights.ItemsSource = filtered.ToList();
-            tbRecordCount.Text = $"Записей: {filtered.Count()} (отфильтровано из {flights.Count})";
+            dgFlights.ItemsSource = filtered;
+            tbRecordCount.Text = $"Записей: {filtered.Count} (отфильтровано из {_allFlights.Count})";
         }
-    }
 
-    // Класс модели для рейса
-    public class Flight
-    {
-        public int FlightID { get; set; }
-        public string FlightNumber { get; set; }
-        public string DeparturePoint { get; set; }
-        public string DestinationPoint { get; set; }
-        public string RouteInfo => $"{DeparturePoint} → {DestinationPoint}";
-        public DateTime DepartureTime { get; set; }
-        public DateTime ArrivalTime { get; set; }
-        public string Status { get; set; }
-        public decimal Price { get; set; }
-        public int AvailableSeats { get; set; }
-        public bool IsTouristSeason { get; set; }
+        private void ClearForm()
+        {
+            SelectedFlight = null;
+            txtFlightNumber.Text = "";
+            cmbStatus.SelectedIndex = 0;
+            txtPrice.Text = "";
+            txtAvailableSeats.Text = "";
+            chkTouristSeason.IsChecked = false;
+            dpDepartureDate.SelectedDate = DateTime.Now;
+            txtDepartureTime.Text = "08:00";
+        }
     }
 }
